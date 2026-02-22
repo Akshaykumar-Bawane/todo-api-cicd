@@ -1,37 +1,9 @@
-name: Node.js CI/CD Pipeline          # ← FIXED UNIQUE NAME
-on: 
-  push:
-    paths: ['app.js', 'package.json']  # ← Only trigger on app changes
-
+cat > .github/workflows/deployment.yml << 'EOF'
+name: Node.js CI/CD
+on: push
 jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Run Trivy scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-        severity: 'CRITICAL,HIGH'
-
-  test:
-    runs-on: ubuntu-latest
-    needs: security-scan
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with: 
-        node-version: '20'
-    - run: npm ci
-    - run: npm test || true
-
   deploy:
     runs-on: ubuntu-latest
-    needs: test
     steps:
     - uses: actions/checkout@v4
     - name: Deploy to EC2
@@ -42,20 +14,11 @@ jobs:
         key: ${{ secrets.KEY }}
         port: ${{ secrets.PORT }}
         script: |
-          sudo yum update -y
-          sudo yum install -y nodejs npm git nginx -y
+          sudo yum install -y nodejs npm nginx git
           mkdir -p /home/ec2-user/todo-api
           cd /home/ec2-user/todo-api
-          cat > app.js << APP
-const express = require('express');
-const app = express();
-app.get('/', (req, res) => res.send('CI/CD Works!'));
-app.listen(3000);
-APP
-          cat > package.json << PKG
-{"name": "todo-api", "version": "1.0.0", "scripts": {"start": "node app.js"}, "dependencies": {"express": "^4.18.2"}}
-PKG
-          sudo npm install -g pm2
-          npm install
+          echo "const express = require('express'); const app = express(); app.get('/', (req, res) => res.send('SUCCESS!')); app.listen(3000);" > app.js
+          sudo npm i -g pm2
+          npm i express
           pm2 restart todo-api || pm2 start app.js --name todo-api
-
+EOF

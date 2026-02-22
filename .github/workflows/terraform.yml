@@ -1,3 +1,4 @@
+cat > .github/workflows/terraform.yml << 'EOF'
 name: Terraform Infrastructure       # ← FIXED UNIQUE NAME
 on:
   push:
@@ -26,3 +27,4 @@ jobs:
     
     - name: Terraform Plan
       run: cd terraform && terraform plan -var="environment=dev"
+EOF
