@@ -1,0 +1,41 @@
+name: Deploy App
+
+on:
+  workflow_run:
+    workflows: ["Terraform IaC Pipeline"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Get EC2 Public IP
+      run: |
+        cd terraform
+        terraform init
+        echo "EC2_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+
+    - name: Create SSH Key File
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        chmod 600 key.pem
+
+    - name: Deploy to EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$EC2_IP << 'EOF'
+          sudo apt update
+          sudo apt install -y nodejs npm git
+          git clone https://github.com/${{ github.repository }} app || true
+          cd app
+          npm install
+          nohup node index.js > output.log 2>&1 &
+        EOF
