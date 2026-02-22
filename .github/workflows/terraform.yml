@@ -1,52 +1,28 @@
-- name: Deploy to EC2 (Amazon Linux)
-  uses: appleboy/ssh-action@v1.0.3
-  with:
-    host: ${{ secrets.HOST }}
-    username: ${{ secrets.USERNAME }}
-    key: ${{ secrets.KEY }}
-    port: ${{ secrets.PORT }}
-    script: |
-      # Amazon Linux commands (NOT Ubuntu)
-      sudo yum update -y
-      sudo amazon-linux-extras install epel -y
-      sudo yum install -y nodejs npm git nginx
-      
-      # Create app directory
-      mkdir -p /home/ec2-user/todo-api
-      cd /home/ec2-user/todo-api
-      
-      # Create app files
-      cat > app.js << 'EOF'
-      const express = require('express');
-      const app = express();
-      app.get('/', (req, res) => res.send('DevSecOps + Terraform + CI/CD Complete!'));
-      app.listen(3000, () => console.log('Todo API on 3000'));
-      EOF
-      
-      cat > package.json << 'EOF'
-      {"name": "todo-api", "version": "1.0.0", "scripts": {"start": "node app.js"}, "dependencies": {"express": "^4.18.2"}}
-      EOF
-      
-      # Install PM2 globally + app
-      sudo npm install -g pm2
-      npm install
-      pm2 start app.js --name todo-api
-      pm2 save
-      pm2 startup
-      
-      # Nginx reverse proxy (port 80 → 3000)
-      sudo bash -c 'cat > /etc/nginx/conf.d/todo-api.conf << NGINXEOF
-server {
-    listen 80;
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-NGINXEOF'
-      
-      sudo systemctl start nginx
-      sudo systemctl enable nginx [web:274]
+name: Terraform Infrastructure       # ← FIXED UNIQUE NAME
+on:
+  push:
+    paths: ['terraform/**']            # ← Only trigger on infra changes
+  pull_request:
 
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials  # ← FIXED LINE 39
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-south-1
+    
+    - uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+    
+    - name: Terraform Init
+      run: cd terraform && terraform init
+    
+    - name: Terraform Plan
+      run: cd terraform && terraform plan -var="environment=dev"
