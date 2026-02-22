@@ -1,25 +1,37 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-0c02fb55956c7d316"  # Ubuntu 22.04
-  instance_type = "t3.micro"
+  ami           = "ami-0c02fb55956c7d316"  # Ubuntu ap-south-1
+  instance_type = "t2.micro"
   
   tags = {
-    Name = "todo-api-infra-${var.environment}"
+    Name = "todo-api-terraform-${var.environment}"
   }
   
-  # Your Node.js app will run here
   user_data = <<-EOF
-              #!/bin/bash
-              apt update
-              apt install -y nodejs npm
-              # Your app will be deployed here later
-              EOF
+#!/bin/bash
+apt update -y
+apt install -y nodejs npm nginx
+systemctl start nginx
+EOF
 }
 
 resource "aws_s3_bucket" "logs" {
-  bucket = "todo-api-logs-${var.environment}-${random_id.bucket_suffix.hex}"
+  bucket = "todo-api-logs-${random_id.suffix.hex}"
 }
-i
+
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
