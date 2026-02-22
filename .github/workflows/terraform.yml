@@ -1,46 +1,52 @@
-name: Terraform IaC Pipeline
-on:
-  push:
-    paths: ['terraform/**']
-  pull_request:
-
-jobs:
-  terraform:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.6.0
-    
-    - name: Terraform Init
-      run: cd terraform && terraform init
-    
-    - name: Terraform Format
-      run: cd terraform && terraform fmt -check
-    
-    - name: Terraform Plan
-      id: plan
-      run: |
-        cd terraform
-        terraform plan -var="environment=dev" -out=tfplan
-        terraform show -no-color tfplan > plan.txt
-    
-    - name: Upload Plan
-      uses: actions/upload-artifact@v4
-      with:
-        name: terraform-plan
-        path: terraform/plan.txt
-    
-    # Apply only on main branch push
-    - name: Terraform Apply
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: |
-        cd terraform
-        terraform apply -auto-approve tfplan
+- name: Deploy to EC2 (Amazon Linux)
+  uses: appleboy/ssh-action@v1.0.3
+  with:
+    host: ${{ secrets.HOST }}
+    username: ${{ secrets.USERNAME }}
+    key: ${{ secrets.KEY }}
+    port: ${{ secrets.PORT }}
+    script: |
+      # Amazon Linux commands (NOT Ubuntu)
+      sudo yum update -y
+      sudo amazon-linux-extras install epel -y
+      sudo yum install -y nodejs npm git nginx
+      
+      # Create app directory
+      mkdir -p /home/ec2-user/todo-api
+      cd /home/ec2-user/todo-api
+      
+      # Create app files
+      cat > app.js << 'EOF'
+      const express = require('express');
+      const app = express();
+      app.get('/', (req, res) => res.send('DevSecOps + Terraform + CI/CD Complete!'));
+      app.listen(3000, () => console.log('Todo API on 3000'));
+      EOF
+      
+      cat > package.json << 'EOF'
+      {"name": "todo-api", "version": "1.0.0", "scripts": {"start": "node app.js"}, "dependencies": {"express": "^4.18.2"}}
+      EOF
+      
+      # Install PM2 globally + app
+      sudo npm install -g pm2
+      npm install
+      pm2 start app.js --name todo-api
+      pm2 save
+      pm2 startup
+      
+      # Nginx reverse proxy (port 80 → 3000)
+      sudo bash -c 'cat > /etc/nginx/conf.d/todo-api.conf << NGINXEOF
+server {
+    listen 80;
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+NGINXEOF'
+      
+      sudo systemctl start nginx
+      sudo systemctl enable nginx [web:274]
 
